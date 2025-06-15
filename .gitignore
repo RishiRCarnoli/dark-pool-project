@@ -1,0 +1,25 @@
+# Python virtual environments
+venv/
+*.venv/
+.venv/
+venv_darkpool_py39/
+venv_darkpool_py311/
+
+# Byte-code files
+*.pyc
+__pycache__/
+
+# IDE-specific files
+.vscode/
+.DS_Store
+
+# Logs
+*.log
+
+# Generated data files and plots
+heatmap_data.json
+flattened_dark_pool_data.csv # If you create this for Tableau
+analysis_plots/
+spirograph.gif
+static_pattern_map.png
+dark_pool_data.duckdb* # If you used DuckDB earlier

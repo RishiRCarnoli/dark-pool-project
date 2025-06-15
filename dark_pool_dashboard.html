@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Dark Pool Liquidity Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: "Midnight Finance" -->
+    <!-- Application Structure Plan: A single-page dashboard layout is used for immediate access to all key information. The structure includes: 1) A main header with dynamic summary statistics. 2) A control panel on the left for primary user interaction (symbol selection), allowing users to drive the analysis. 3) A main content area with a tabbed interface to organize different analytical views (Overview, Time-Series, Trade Size) without cluttering the page. This task-oriented flow (select symbol -> view analyses) is intuitive for users who want to compare securities across different liquidity metrics. -->
+    <!-- Visualization & Content Choices: - Total Liquidity by Venue: (Goal: Compare) A bar chart is used for direct comparison of total trade value across venues. It's the clearest way to show which venue is dominant. (Library: Chart.js) - Venue Market Share: (Goal: Proportions) A donut chart effectively visualizes the percentage share of trading volume for each venue, offering a quick understanding of market fragmentation. (Library: Chart.js) - Liquidity Over Time: (Goal: Change) A multi-line chart is the standard and most effective method for showing trends over time, comparing how venue liquidity evolves. (Library: Chart.js) - Average Trade Size: (Goal: Compare Characteristics) A bar chart comparing average trade size per venue serves as a proxy for analyzing block trading activity, a key characteristic of dark pools. (Library: Chart.js) All interactions are driven by a central symbol selector for a cohesive user experience. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #cbd5e1;
+        }
+        .chart-container {
+            position: relative;
+            background-color: #1e293b;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        .tab-button {
+            transition: all 0.3s ease;
+        }
+        .tab-button.active {
+            background-color: #0ea5e9;
+            color: #ffffff;
+        }
+        .tab-button:not(.active) {
+            background-color: #334155;
+            color: #94a3b8;
+        }
+        select {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 0.5rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+            padding-right: 2.5rem;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-6 lg:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-white mb-2">Dark Pool Liquidity Dashboard</h1>
+            <p class="text-lg text-slate-400">An interactive analysis of synthetic trading activity across lit and dark venues.</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+            <aside class="lg:col-span-1 bg-slate-800 p-6 rounded-xl shadow-lg h-fit">
+                <h2 class="text-xl font-semibold text-white mb-4 border-b border-slate-700 pb-2">Controls</h2>
+                <div>
+                    <label for="symbolSelector" class="block text-sm font-medium text-slate-400 mb-2">Select Stock Symbol</label>
+                    <select id="symbolSelector" class="w-full bg-slate-700 border border-slate-600 text-white rounded-lg p-2.5 focus:ring-sky-500 focus:border-sky-500 appearance-none">
+                    </select>
+                </div>
+                
+                <div id="summaryStats" class="mt-6 space-y-3">
+                     <h3 class="text-lg font-semibold text-white mb-2 border-b border-slate-700 pb-2">Key Metrics for <span id="selectedSymbolStat" class="text-sky-400"></span></h3>
+                    <div class="bg-slate-700/50 p-3 rounded-lg">
+                        <p class="text-sm text-slate-400">Total Traded Value</p>
+                        <p id="totalValue" class="text-2xl font-bold text-white">-</p>
+                    </div>
+                    <div class="bg-slate-700/50 p-3 rounded-lg">
+                        <p class="text-sm text-slate-400">Total Traded Quantity</p>
+                        <p id="totalQuantity" class="text-2xl font-bold text-white">-</p>
+                    </div>
+                    <div class="bg-slate-700/50 p-3 rounded-lg">
+                        <p class="text-sm text-slate-400">Total Trades</p>
+                        <p id="totalTrades" class="text-2xl font-bold text-white">-</p>
+                    </div>
+                </div>
+            </aside>
+
+            <main class="lg:col-span-3">
+                <div class="mb-6">
+                    <div class="flex space-x-2 bg-slate-800 p-1 rounded-lg">
+                        <button id="tab-overview" class="tab-button flex-1 py-2 px-4 rounded-md text-sm font-medium active">Overview</button>
+                        <button id="tab-timeseries" class="tab-button flex-1 py-2 px-4 rounded-md text-sm font-medium">Time-Series</button>
+                        <button id="tab-tradesize" class="tab-button flex-1 py-2 px-4 rounded-md text-sm font-medium">Trade Size Analysis</button>
+                    </div>
+                </div>
+
+                <div id="tab-content-overview" class="tab-content grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="chart-container md:col-span-2">
+                         <h3 class="text-lg font-semibold text-white mb-4">Total Trade Value by Venue</h3>
+                         <p class="text-sm text-slate-400 mb-4">This chart provides a direct comparison of the total dollar value traded across the different venues for the selected symbol. It helps identify which dark pools or lit exchanges are the primary centers of liquidity.</p>
+                        <canvas id="venueValueChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3 class="text-lg font-semibold text-white mb-4">Trade Volume Market Share</h3>
+                        <p class="text-sm text-slate-400 mb-4">This donut chart shows the percentage of the total traded quantity (number of shares) executed on each venue. It illustrates the market fragmentation and the share of volume captured by dark vs. lit pools.</p>
+                        <canvas id="venueShareChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3 class="text-lg font-semibold text-white mb-4">Total Number of Trades</h3>
+                        <p class="text-sm text-slate-400 mb-4">This chart displays the raw count of individual trades per venue. Comparing this with the value and volume charts can offer insights into the average trade size and trading frequency.</p>
+                        <canvas id="tradeCountChart"></canvas>
+                    </div>
+                </div>
+
+                <div id="tab-content-timeseries" class="tab-content hidden">
+                    <div class="chart-container">
+                        <h3 class="text-lg font-semibold text-white mb-4">Liquidity Over Time</h3>
+                         <p class="text-sm text-slate-400 mb-4">This time-series analysis tracks the total traded value in 5-minute intervals throughout the trading day. Each line represents a different venue, allowing for a dynamic view of how liquidity shifts and where activity is concentrated at different times.</p>
+                        <canvas id="timeSeriesChart"></canvas>
+                    </div>
+                </div>
+
+                <div id="tab-content-tradesize" class="tab-content hidden">
+                    <div class="chart-container">
+                        <h3 class="text-lg font-semibold text-white mb-4">Average Trade Size Comparison</h3>
+                        <p class="text-sm text-slate-400 mb-4">A critical aspect of dark pool analysis is understanding trade size. This chart compares the average number of shares per trade for each venue. Higher values in dark pools often indicate the presence of large, institutional block trades being executed away from the public lit exchange.</p>
+                        <canvas id="avgTradeSizeChart"></canvas>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const heatmapData = [
+          {
+            "avg_price": 262.3992106211152, "latitude": 40.7128, "longitude": -74.006, "num_trades": 707, "symbol": "SYNTH_AMZN",
+            "total_quantity": 2222281, "total_trade_value": 592554438.7408894, "venue": "DARK2", "window_end": "2024-01-01T11:55:00", "window_start": "2024-01-01T11:50:00"
+          },
+          {
+            "avg_price": 271.3175441696064, "latitude": 41.8781, "longitude": -87.6298, "num_trades": 432, "symbol": "SYNTH_AMZN",
+            "total_quantity": 1422960, "total_trade_value": 391391966.3081677, "venue": "LIT", "window_end": "2024-01-01T11:55:00", "window_start": "2024-01-01T11:50:00"
+          },
+          {
+            "avg_price": 258.38483404074714, "latitude": 34.0522, "longitude": -118.2437, "num_trades": 368, "symbol": "SYNTH_SPY",
+            "total_quantity": 1127017, "total_trade_value": 302157457.35590225, "venue": "DARK1", "window_end": "2024-01-01T11:55:00", "window_start": "2024-01-01T11:50:00"
+          },
+          {
+            "avg_price": 264.92299389030353, "latitude": 40.7128, "longitude": -74.006, "num_trades": 601, "symbol": "SYNTH_SPY",
+            "total_quantity": 1833952, "total_trade_value": 493028997.47117347, "venue": "DARK2", "window_end": "2024-01-01T11:55:00", "window_start": "2024-01-01T11:50:00"
+          },
+          {
+            "avg_price": 259.6616449481213, "latitude": 41.8781, "longitude": -87.6298, "num_trades": 440, "symbol": "SYNTH_SPY",
+            "total_quantity": 1344508, "total_trade_value": 359601001.1382402, "venue": "LIT", "window_end": "2024-01-01T11:55:00", "window_start": "2024-01-01T11:50:00"
+          },
+          {
+            "avg_price": 273.2453963898305, "latitude": 34.0522, "longitude": -118.2437, "num_trades": 410, "symbol": "SYNTH_AMZN",
+            "total_quantity": 1259472, "total_trade_value": 345679598.3531153, "venue": "DARK1", "window_end": "2024-01-01T11:55:00", "window_start": "2024-01-01T11:50:00"
+          },
+          {
+            "avg_price": 256.67671269315963, "latitude": 40.7128, "longitude": -74.006, "num_trades": 476, "symbol": "SYNTH_TSLA",
+            "total_quantity": 1405710, "total_trade_value": 380235177.43469316, "venue": "DARK2", "window_end": "2024-01-01T11:55:00", "window_start": "2024-01-01T11:50:00"
+          },
+          {
+            "avg_price": 258.0334492410102, "latitude": 41.8781, "longitude": -87.6298, "num_trades": 211, "symbol": "SYNTH_TSLA",
+            "total_quantity": 666839, "total_trade_value": 169631475.07372952, "venue": "LIT", "window_end": "2024-01-01T11:55:00", "window_start": "2024-01-01T11:50:00"
+          },
+          {
+            "avg_price": 254.71726548117027, "latitude": 34.0522, "longitude": -118.2437, "num_trades": 299, "symbol": "SYNTH_TSLA",
+            "total_quantity": 870923, "total_trade_value": 230145929.08454555, "venue": "DARK1", "window_end": "2024-01-01T11:55:00", "window_start": "2024-01-01T11:50:00"
+          },
+          {
+            "avg_price": 262.3992106211152, "latitude": 40.7128, "longitude": -74.006, "num_trades": 707, "symbol": "SYNTH_AMZN",
+            "total_quantity": 2222281, "total_trade_value": 592554438.7408894, "venue": "DARK2", "window_end": "2024-01-01T12:00:00", "window_start": "2024-01-01T11:55:00"
+          },
+          {
+            "avg_price": 271.3175441696064, "latitude": 41.8781, "longitude": -87.6298, "num_trades": 432, "symbol": "SYNTH_AMZN",
+            "total_quantity": 1422960, "total_trade_value": 391391966.3081677, "venue": "LIT", "window_end": "2024-01-01T12:00:00", "window_start": "2024-01-01T11:55:00"
+          },
+          {
+            "avg_price": 258.38483404074714, "latitude": 34.0522, "longitude": -118.2437, "num_trades": 368, "symbol": "SYNTH_SPY",
+            "total_quantity": 1127017, "total_trade_value": 302157457.35590225, "venue": "DARK1", "window_end": "2024-01-01T12:00:00", "window_start": "2024-01-01T11:55:00"
+          },
+          {
+            "avg_price": 264.92299389030353, "latitude": 40.7128, "longitude": -74.006, "num_trades": 601, "symbol": "SYNTH_SPY",
+            "total_quantity": 1833952, "total_trade_value": 493028997.47117347, "venue": "DARK2", "window_end": "2024-01-01T12:00:00", "window_start": "2024-01-01T11:55:00"
+          },
+          {
+            "avg_price": 259.6616449481213, "latitude": 41.8781, "longitude": -87.6298, "num_trades": 440, "symbol": "SYNTH_SPY",
+            "total_quantity": 1344508, "total_trade_value": 359601001.1382402, "venue": "LIT", "window_end": "2024-01-01T12:00:00", "window_start": "2024-01-01T11:55:00"
+          },
+          {
+            "avg_price": 273.2453963898305, "latitude": 34.0522, "longitude": -118.2437, "num_trades": 410, "symbol": "SYNTH_AMZN",
+            "total_quantity": 1259472, "total_trade_value": 345679598.3531153, "venue": "DARK1", "window_end": "2024-01-01T12:00:00", "window_start": "2024-01-01T11:55:00"
+          },
+          {
+            "avg_price": 256.67671269315963, "latitude": 40.7128, "longitude": -74.006, "num_trades": 476, "symbol": "SYNTH_TSLA",
+            "total_quantity": 1405710, "total_trade_value": 380235177.43469316, "venue": "DARK2", "window_end": "2024-01-01T12:00:00", "window_start": "2024-01-01T11:55:00"
+          },
+          {
+            "avg_price": 258.0334492410102, "latitude": 41.8781, "longitude": -87.6298, "num_trades": 211, "symbol": "SYNTH_TSLA",
+            "total_quantity": 666839, "total_trade_value": 169631475.07372952, "venue": "LIT", "window_end": "2024-01-01T12:00:00", "window_start": "2024-01-01T11:55:00"
+          },
+          {
+            "avg_price": 254.71726548117027, "latitude": 34.0522, "longitude": -118.2437, "num_trades": 299, "symbol": "SYNTH_TSLA",
+            "total_quantity": 870923, "total_trade_value": 230145929.08454555, "venue": "DARK1", "window_end": "2024-01-01T12:00:00", "window_start": "2024-01-01T11:55:00"
+          },
+          {
+            "avg_price": 253.5604732832361, "latitude": 34.0522, "longitude": -118.2437, "num_trades": 565, "symbol": "SYNTH_TSLA",
+            "total_quantity": 1669976, "total_trade_value": 435890111.8775147, "venue": "DARK1", "window_end": "2024-01-01T16:30:00", "window_start": "2024-01-01T16:25:00"
+          },
+          {
+            "avg_price": 254.34467919279604, "latitude": 41.8781, "longitude": -87.6298, "num_trades": 938, "symbol": "SYNTH_AMZN",
+            "total_quantity": 3035602, "total_trade_value": 776608794.3464011, "venue": "LIT", "window_end": "2024-01-01T16:35:00", "window_start": "2024-01-01T16:30:00"
+          },
+          {
+            "avg_price": 260.9702715735113, "latitude": 34.0522, "longitude": -118.2437, "num_trades": 819, "symbol": "SYNTH_SPY",
+            "total_quantity": 2420370, "total_trade_value": 632007802.7758379, "venue": "DARK1", "window_end": "2024-01-01T16:35:00", "window_start": "2024-01-01T16:30:00"
+          },
+          {
+            "avg_price": 261.27218335028085, "latitude": 40.7128, "longitude": -74.006, "num_trades": 997, "symbol": "SYNTH_SPY",
+            "total_quantity": 3094761, "total_trade_value": 801211570.4994887, "venue": "LIT", "window_end": "2024-01-01T16:35:00", "window_start": "2024-01-01T16:30:00"
+          },
+          {
+            "avg_price": 263.1492080345037, "latitude": 41.8781, "longitude": -87.6298, "num_trades": 591, "symbol": "SYNTH_SPY",
+            "total_quantity": 1856715, "total_trade_value": 488588820.6698668, "venue": "DARK2", "window_end": "2024-01-01T16:35:00", "window_start": "2024-01-01T16:30:00"
+          },
+          {
+            "avg_price": 258.9880155097061, "latitude": 40.7128, "longitude": -74.006, "num_trades": 792, "symbol": "SYNTH_TSLA",
+            "total_quantity": 2389025, "total_trade_value": 618586073.473539, "venue": "LIT", "window_end": "2024-01-01T16:35:00", "window_start": "2024-01-01T16:30:00"
+          },
+          {
+            "avg_price": 257.6599052063853, "latitude": 41.8781, "longitude": -87.6298, "num_trades": 407, "symbol": "SYNTH_TSLA",
+            "total_quantity": 1201509, "total_trade_value": 309539246.3683244, "venue": "DARK1", "window_end": "2024-01-01T16:35:00", "window_start": "2024-01-01T16:30:00"
+          },
+          {
+            "avg_price": 259.98064977937397, "latitude": 34.0522, "longitude": -118.2437, "num_trades": 769, "symbol": "SYNTH_AMZN",
+            "total_quantity": 2341257, "total_trade_value": 608688405.0837563, "venue": "DARK2", "window_end": "2024-01-01T16:35:00", "window_start": "2024-01-01T16:30:00"
+          },
+          {
+            "avg_price": 256.0963339178453, "latitude": 40.7128, "longitude": -74.006, "num_trades": 709, "symbol": "SYNTH_AMZN",
+            "total_quantity": 2187607, "total_trade_value": 560241950.4578848, "venue": "DARK1", "window_end": "2024-01-01T16:35:00", "window_start": "2024-01-01T16:30:00"
+          },
+          {
+            "avg_price": 253.5604732832361, "latitude": 34.0522, "longitude": -118.2437, "num_trades": 565, "symbol": "SYNTH_TSLA",
+            "total_quantity": 1669976, "total_trade_value": 435890111.8775147, "venue": "DARK1", "window_end": "2024-01-01T16:35:00", "window_start": "2024-01-01T16:30:00"
+          }
+        ];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const symbols = [...new Set(heatmapData.map(d => d.symbol))];
+            const symbolSelector = document.getElementById('symbolSelector');
+            symbols.forEach(symbol => {
+                const option = document.createElement('option');
+                option.value = symbol;
+                option.textContent = symbol;
+                symbolSelector.appendChild(option);
+            });
+
+            const chartInstances = {};
+            const VENUE_COLORS = {
+                'LIT': 'rgba(14, 165, 233, 0.7)',
+                'DARK1': 'rgba(22, 101, 52, 0.7)',
+                'DARK2': 'rgba(13, 148, 136, 0.7)'
+            };
+            
+            const VENUE_BORDERS = {
+                'LIT': 'rgba(14, 165, 233, 1)',
+                'DARK1': 'rgba(22, 101, 52, 1)',
+                'DARK2': 'rgba(13, 148, 136, 1)'
+            };
+
+            function createChart(ctx, type, data, options) {
+                if (chartInstances[ctx.canvas.id]) {
+                    chartInstances[ctx.canvas.id].destroy();
+                }
+                chartInstances[ctx.canvas.id] = new Chart(ctx, { type, data, options });
+            }
+            
+            function formatCurrency(value) {
+                 if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
+                 if (value >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
+                 if (value >= 1e3) return `$${(value / 1e3).toFixed(2)}K`;
+                 return `$${value.toFixed(2)}`;
+            }
+            
+            function formatNumber(value) {
+                 if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`;
+                 if (value >= 1e3) return `${(value / 1e3).toFixed(2)}K`;
+                 return value.toString();
+            }
+
+            function updateDashboard(selectedSymbol) {
+                const filteredData = heatmapData.filter(d => d.symbol === selectedSymbol);
+                document.getElementById('selectedSymbolStat').textContent = selectedSymbol;
+
+                const summary = filteredData.reduce((acc, curr) => {
+                    acc.totalValue += curr.total_trade_value;
+                    acc.totalQuantity += curr.total_quantity;
+                    acc.totalTrades += curr.num_trades;
+                    return acc;
+                }, { totalValue: 0, totalQuantity: 0, totalTrades: 0 });
+
+                document.getElementById('totalValue').textContent = formatCurrency(summary.totalValue);
+                document.getElementById('totalQuantity').textContent = formatNumber(summary.totalQuantity);
+                document.getElementById('totalTrades').textContent = formatNumber(summary.totalTrades);
+
+                const dataByVenue = filteredData.reduce((acc, curr) => {
+                    if (!acc[curr.venue]) {
+                        acc[curr.venue] = { totalValue: 0, totalQuantity: 0, totalTrades: 0, count: 0, avgTradeSizes: [] };
+                    }
+                    acc[curr.venue].totalValue += curr.total_trade_value;
+                    acc[curr.venue].totalQuantity += curr.total_quantity;
+                    acc[curr.venue].totalTrades += curr.num_trades;
+                    acc[curr.venue].avgTradeSizes.push(curr.total_quantity / curr.num_trades); // Store individual avg trade sizes
+                    return acc;
+                }, {});
+
+                const venues = Object.keys(dataByVenue).sort();
+                const venueValues = venues.map(v => dataByVenue[v].totalValue);
+                const venueQuantities = venues.map(v => dataByVenue[v].totalQuantity);
+                const venueTradeCounts = venues.map(v => dataByVenue[v].totalTrades);
+                // Calculate average of averages for avgTradeSize chart
+                const avgTradeSizes = venues.map(v => {
+                    const sizes = dataByVenue[v].avgTradeSizes.filter(s => !isNaN(s) && isFinite(s));
+                    return sizes.length > 0 ? sizes.reduce((sum, val) => sum + val, 0) / sizes.length : 0;
+                });
+                
+                const backgroundColors = venues.map(v => VENUE_COLORS[v] || 'rgba(100, 116, 139, 0.7)');
+                const borderColors = venues.map(v => VENUE_BORDERS[v] || 'rgba(100, 116, 139, 1)');
+
+                const commonOptions = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: '#94a3b8' } },
+                        tooltip: {
+                            backgroundColor: '#334155',
+                            titleColor: '#e2e8f0',
+                            bodyColor: '#cbd5e1',
+                            callbacks: {
+                                title: function(context) {
+                                    const label = context[0].label;
+                                    return label.length > 16 ? label.substring(0, 13) + '...' : label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { ticks: { color: '#94a3b8', callback: function(value, index, values) {
+                            const label = this.getLabelForValue(value);
+                            return label.length > 16 ? label.substring(0, 13) + '...' : label;
+                        }}, grid: { color: 'rgba(100, 116, 139, 0.2)' } },
+                        y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(100, 116, 139, 0.2)' } }
+                    }
+                };
+                
+                createChart(document.getElementById('venueValueChart').getContext('2d'), 'bar', {
+                    labels: venues,
+                    datasets: [{
+                        label: 'Total Trade Value',
+                        data: venueValues,
+                        backgroundColor: backgroundColors,
+                        borderColor: borderColors,
+                        borderWidth: 1
+                    }]
+                }, { ...commonOptions, scales: {...commonOptions.scales, y: {...commonOptions.scales.y, ticks: {...commonOptions.scales.y.ticks, callback: formatCurrency }}}});
+
+                createChart(document.getElementById('venueShareChart').getContext('2d'), 'doughnut', {
+                    labels: venues,
+                    datasets: [{
+                        label: 'Trade Volume Market Share',
+                        data: venueQuantities,
+                        backgroundColor: backgroundColors,
+                        borderColor: '#1e293b',
+                        borderWidth: 2
+                    }]
+                }, {...commonOptions, plugins: {...commonOptions.plugins, legend: {position: 'bottom', labels: { color: '#94a3b8' }}}});
+
+                createChart(document.getElementById('tradeCountChart').getContext('2d'), 'bar', {
+                    labels: venues,
+                    datasets: [{
+                        label: 'Total Number of Trades',
+                        data: venueTradeCounts,
+                        backgroundColor: backgroundColors,
+                        borderColor: borderColors,
+                        borderWidth: 1
+                    }]
+                }, { ...commonOptions, scales: {...commonOptions.scales, y: {...commonOptions.scales.y, ticks: {...commonOptions.scales.y.ticks, callback: formatNumber }}}});
+
+                // Time Series Chart Data
+                const timeSeriesData = filteredData.sort((a, b) => new Date(a.window_start) - new Date(b.window_start));
+                const uniqueTimeWindows = [...new Set(timeSeriesData.map(d => d.window_start))].sort();
+
+                const timeSeriesDatasets = venues.map(venue => {
+                    const dataPoints = uniqueTimeWindows.map(timeWindow => {
+                        const record = timeSeriesData.find(d => d.window_start === timeWindow && d.venue === venue);
+                        return record ? record.total_trade_value : 0;
+                    });
+                    return {
+                        label: venue,
+                        data: dataPoints,
+                        borderColor: VENUE_BORDERS[venue] || 'rgba(100, 116, 139, 1)',
+                        backgroundColor: VENUE_COLORS[venue] || 'rgba(100, 116, 139, 0.7)',
+                        fill: false,
+                        tension: 0.1,
+                        pointRadius: 3
+                    };
+                });
+
+                createChart(document.getElementById('timeSeriesChart').getContext('2d'), 'line', {
+                    labels: uniqueTimeWindows.map(ts => new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
+                    datasets: timeSeriesDatasets
+                }, {
+                    ...commonOptions,
+                    scales: {
+                        x: {
+                            ...commonOptions.scales.x,
+                            title: { display: true, text: 'Time Window (HH:MM)', color: '#94a3b8' },
+                            ticks: {
+                                ...commonOptions.scales.x.ticks,
+                                autoSkip: true,
+                                maxTicksLimit: 10,
+                                callback: function(value, index, values) {
+                                    const label = this.getLabelForValue(value);
+                                    if (label.length > 16) return label.substring(0, 13) + '...';
+                                    return label;
+                                }
+                            }
+                        },
+                        y: {
+                            ...commonOptions.scales.y,
+                            title: { display: true, text: 'Total Trade Value', color: '#94a3b8' },
+                            ticks: {...commonOptions.scales.y.ticks, callback: formatCurrency }
+                        }
+                    }
+                });
+
+                createChart(document.getElementById('avgTradeSizeChart').getContext('2d'), 'bar', {
+                    labels: venues,
+                    datasets: [{
+                        label: 'Average Trade Size (Shares)',
+                        data: avgTradeSizes,
+                        backgroundColor: backgroundColors,
+                        borderColor: borderColors,
+                        borderWidth: 1
+                    }]
+                }, { ...commonOptions, scales: {...commonOptions.scales, y: {...commonOptions.scales.y, ticks: {...commonOptions.scales.y.ticks, callback: formatNumber }}}});
+            }
+
+            symbolSelector.addEventListener('change', (event) => {
+                updateDashboard(event.target.value);
+            });
+
+            // Tab functionality
+            const tabButtons = document.querySelectorAll('.tab-button');
+            const tabContents = document.querySelectorAll('.tab-content');
+
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    tabContents.forEach(content => content.classList.add('hidden'));
+
+                    button.classList.add('active');
+                    document.getElementById(`tab-content-${button.id.replace('tab-', '')}`).classList.remove('hidden');
+                });
+            });
+
+            // Initial load
+            if (symbols.length > 0) {
+                symbolSelector.value = symbols[0];
+                updateDashboard(symbols[0]);
+            }
+        });
+
+        // Function to periodically fetch data (if API is running)
+        // For local development, using static heatmapData array.
+        // If you connect to your running Flask API:
+        // function fetchAndUpdateData() {
+        //     fetch('http://localhost:5001/api/heatmap_data')
+        //         .then(response => response.json())
+        //         .then(data => {
+        //             heatmapData = data; // Overwrite or append
+        //             const selectedSymbol = symbolSelector.value;
+        //             if (selectedSymbol) {
+        //                 updateDashboard(selectedSymbol);
+        //             }
+        //         })
+        //         .catch(error => console.error('Error fetching data:', error));
+        // }
+        // setInterval(fetchAndUpdateData, 5000); // Fetch every 5 seconds
+        // Also, remember to remove the hardcoded heatmapData array if you use live fetching.
+    </script>
+</body>
+</html>
