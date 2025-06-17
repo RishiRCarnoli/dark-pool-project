@@ -15,7 +15,7 @@ OUTPUT_PLOTS_DIR = 'analysis_plots' # Directory to save generated plots
 if not os.path.exists(OUTPUT_PLOTS_DIR):
     os.makedirs(OUTPUT_PLOTS_DIR)
 
-# --- 1. Load and Initial Data Preparation ---
+
 print("--- Starting Data Loading and Preparation ---")
 try:
     with open(JSON_FILE_PATH, 'r') as f:
@@ -32,7 +32,7 @@ except Exception as e:
     print(f"An unexpected error occurred during file loading: {e}")
     exit()
 
-# Convert timestamp columns to datetime objects for proper time-series analysis
+
 df['window_start'] = pd.to_datetime(df['window_start'])
 df['window_end'] = pd.to_datetime(df['window_end'])
 
@@ -44,15 +44,14 @@ df['avg_trade_size'] = df.apply(
     axis=1
 )
 
-# Display basic information and a preview of the processed DataFrame
+
 print("\nDataFrame Information:")
 df.info()
 print("\nFirst 5 rows of prepared data (including calculated avg_trade_size):")
-# Use to_markdown for neat console output
 print(df.head().to_markdown(index=False, numalign="left", stralign="left"))
 print("--- Data Loading and Preparation Complete ---")
 
-# --- 2. Overall Liquidity Distribution Analysis by Venue ---
+
 # Aggregate total trade value, quantity, and number of trades across all symbols
 # and all time windows, grouped by venue.
 print("\n--- Analyzing Overall Liquidity by Venue ---")
@@ -117,7 +116,7 @@ plt.savefig(plot_path)
 print(f"Generated plot: {plot_path}")
 plt.show()
 
-# --- 4. Time-Series Liquidity Trends ---
+
 # This plot shows how total trade value for each symbol and venue evolves over time.
 # It can reveal patterns like opening/closing auction activity or intra-day shifts.
 print("\n--- Analyzing Time-Series Liquidity Trends ---")
@@ -139,7 +138,7 @@ plt.savefig(plot_path)
 print(f"Generated plot: {plot_path}")
 plt.show()
 
-# --- 5. Average Trade Size Analysis (Dark vs. Lit Pools) ---
+
 # This is a critical analysis for dark pools, as they often facilitate larger block trades.
 # Box plots are great for showing the distribution (median, quartiles, outliers) of trade sizes.
 print("\n--- Analyzing Average Trade Size Distribution ---")
@@ -158,7 +157,6 @@ plt.savefig(plot_path)
 print(f"Generated plot: {plot_path}")
 plt.show()
 
-# --- 6. Dark vs. Lit Pool Comparison Over Time (Stacked Area Chart Concept) ---
 # This visualizes the split of liquidity between dark pools and lit exchanges over time.
 # We'll create a stacked area plot to show the proportion.
 print("\n--- Comparing Dark Pool vs. Lit Exchange Liquidity Over Time ---")
@@ -196,24 +194,24 @@ plt.savefig(plot_path)
 print(f"Generated plot: {plot_path}")
 plt.show()
 
-# --- 7. Heatmap-style Scatter Plot (Static Geographic Snapshot) ---
+
 # This mimics KeplerGL's core map visualization, showing liquidity hotspots on abstract coordinates.
 print("\n--- Generating Static Liquidity Heatmap Snapshot ---")
 plt.figure(figsize=(12, 10))
 # Using scatter plot where point size and color are mapped to total_trade_value
 # We'll sample the data if it's too large for a clearer plot, or plot all if small.
-num_sample = min(5000, len(df)) # Limit points for clearer visualization on a static map
-sampled_df = df.sample(n=num_sample, random_state=42).copy() # Use .copy() to avoid SettingWithCopyWarning
+num_sample = min(5000, len(df)) 
+sampled_df = df.sample(n=num_sample, random_state=42).copy() # 
 
 scatter = sns.scatterplot(
     x='longitude',
     y='latitude',
-    size='total_trade_value', # Size of point based on trade value
-    hue='total_trade_value',  # Color of point based on trade value
-    sizes=(50, 2000),         # Min and max marker size (adjust as needed for visibility)
-    palette='hot',           # Colormap for heatmap effect (e.g., 'viridis', 'magma', 'hot')
-    alpha=0.7,               # Transparency of points
-    edgecolor='black',       # Border color for points
+    size='total_trade_value', 
+    hue='total_trade_value',  
+    sizes=(50, 2000),         
+    palette='hot',           
+    alpha=0.7,               
+    edgecolor='black',       
     linewidth=0.5,
     data=sampled_df
 )
@@ -223,8 +221,8 @@ plt.xlabel('Longitude', fontsize=14)
 plt.ylabel('Latitude', fontsize=14)
 plt.grid(True, linestyle='--', alpha=0.6)
 
-# Add venue labels to the map
-# Calculate approximate center for each venue's label
+
+
 for venue in df['venue'].unique():
     subset = df[df['venue'] == venue]
     if not subset.empty:
@@ -234,10 +232,10 @@ for venue in df['venue'].unique():
                  fontsize=10, weight='bold', color='white',
                  bbox=dict(boxstyle="round,pad=0.3", fc='black', ec='none', alpha=0.6))
 
-# Add a color bar to explain the hue mapping
+
 norm = plt.Normalize(sampled_df['total_trade_value'].min(), sampled_df['total_trade_value'].max())
 sm = plt.cm.ScalarMappable(cmap="hot", norm=norm)
-sm.set_array([]) # Or an array of shape (N,)
+sm.set_array([]) 
 cbar = plt.colorbar(sm, ax=plt.gca(), label='Total Trade Value ($)')
 cbar.ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'${x/1e6:.1f}M'))
 
